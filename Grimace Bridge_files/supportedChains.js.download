@@ -1,0 +1,12 @@
+const networkChain = {
+
+    // Testnet chains
+  3: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(3)), chainName: "Ropsten Test Network", rpcUrls: ["https://api.infura.io/v1/jsonrpc/ropsten"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18,}, blockExplorerUrls: ["https://ropsten.etherscan.io"] },
+  97: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(97)), chainName: "Binance-Smart-Chain Test Network", rpcUrls: ["https://data-seed-prebsc-1-s1.binance.org:8545/"], nativeCurrency: { name: "Binance Coin", symbol: "BNB", decimals: 18,}, blockExplorerUrls: ["https://testnet.bscscan.com"] },
+  80001: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(80001)), chainName: "Polygon Test Network", rpcUrls: ["https://rpc-mumbai.maticvigil.com"], nativeCurrency: { name: "Matic", symbol: "MATIC", decimals: 18,}, blockExplorerUrls: ["https://explorer-mumbai.maticvigil.com/"] },
+
+  // Mainnet chains
+  1: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(1)), chainName: "Ethereum Main Network", rpcUrls: ["https://api.infura.io/v1/jsonrpc/mainnet"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18,}, blockExplorerUrls: ["https://etherscan.io"] },
+  56: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(56)), chainName: "Binance-Smart-Chain Main Network", rpcUrls: ["https://bsc-dataseed.binance.org/"], nativeCurrency: { name: "Binance Coin", symbol: "BNB", decimals: 18,}, blockExplorerUrls: ["https://bscscan.com"] },
+  137: { chainId: ethers.utils.hexValue(ethers.BigNumber.from(137)), chainName: "Polygon Main Network", rpcUrls: ["https://polygon-rpc.com"], nativeCurrency: { name: "Matic", symbol: "MATIC", decimals: 18,}, blockExplorerUrls: ["https://polygonscan.com/"] },
+};

@@ -1,0 +1,140 @@
+/* The Modal (background) */
+.connectModal {
+  display: none; /* Hidden by default */
+  position: fixed; /* Stay in place */
+  z-index: 1; /* Sit on top */
+  padding-top: 100px; /* Location of the box */
+  left: 0;
+  top: 0;
+  width: 100%; /* Full width */
+  height: 100%; /* Full height */
+  overflow: auto; /* Enable scroll if needed */
+  background-color: rgb(10 0 20 / 86%);
+}
+
+/* Modal Content */
+.connectModal-content {
+  position: relative;
+  background-color: #E1D1F3;
+  margin: auto;
+  border-radius: 22px;
+  max-width: 591px;
+  box-sizing: border-box;
+  width: 100%;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+  -webkit-animation-name: animatetop;
+  -webkit-animation-duration: 0.4s;
+  animation-name: animatetop;
+  animation-duration: 0.4s;
+}
+
+/* Add Animation */
+@-webkit-keyframes animatetop {
+  from {
+    top: -300px;
+    opacity: 0;
+  }
+  to {
+    top: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes animatetop {
+  from {
+    top: -300px;
+    opacity: 0;
+  }
+  to {
+    top: 0;
+    opacity: 1;
+  }
+}
+
+/* The Close Button */
+.connectModalClose {
+  color: #6609D5;
+  float: right;
+  font-size: 19px;
+  font-weight: 100;
+  background: white;
+  border-radius: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+}
+
+.connectModalClose:hover,
+.connectModalClose:focus {
+  color: #b21c1c;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.connectModal-header {
+  color: #A05AF0;
+  border-bottom: 1px solid #DAB9FF;
+  font-size: 15px;
+  font-weight: bold;
+  padding: 5px 25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wallet-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.connectModal-body {
+  padding-bottom: 1.5rem;
+}
+.swap-history {
+  padding: 5px 25px;
+}
+
+.connectModal-footer {
+  padding: 2px 16px;
+  color: white;
+  text-align: center;
+}
+
+.walletProviderbutton {
+  display: flex;
+  align-items: center;
+  color: #A05AF0;
+  font-size: 1rem;
+  transition: all 0.3s;
+  z-index: 1;
+  cursor: pointer;
+  padding: 20px 25px;
+  font-size: 22px;
+  gap: 0.7rem;
+}
+
+.walletProviderbutton:hover {
+  background-color: #F7F0FF;
+}
+
+.terms-of-service {
+  border-radius: 9px;
+  width: 87%;
+  margin: auto;
+  background-color: #fff;
+  color: #A05AF0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 21px;
+  padding: 7px 15px;
+  margin-top: 2rem;
+  margin-bottom: 2.5rem;
+}
+
+.terms-of-service b {
+  color: #772EDA;
+  font-weight: 800;
+}

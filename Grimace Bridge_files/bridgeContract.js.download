@@ -1,0 +1,489 @@
+async function bridgeTokens() {
+  await fetchAccountData();
+  if (!provider) {
+    return;
+  }
+
+  if (!checkBalance(userAddress, amount.toString())) {
+    return;
+  }
+
+  var bridge_amount = amount.toString();
+
+  if (to_chainID == from_chainID) {
+    console.log("SAME_NETWORK_FROM_AND_TO");
+    return;
+  }
+
+  await fetchAccountData();
+
+  if (provider && userAddress) {
+    var connectedChain = await web3.eth.getChainId();
+    if (from_chainID == connectedChain) {
+      approve(userAddress, bridge_amount)
+        .then(() => {
+          collect(from_chainID, to_chainID, bridge_amount)
+            .then(() => {
+              deliver(userAddress, from_chainID, to_chainID, bridge_amount);
+            })
+            .catch((error) => {
+              let msgboxbox = new MessageBox("#msgbox-area", {
+                closeTime: 10000,
+                hideCloseButton: false,
+              });
+
+              if (typeof error == "object") {
+                error = error.message;
+              }
+              msgboxbox.show(error, "ERROR", "CLOSE", () => {
+                mainButton.setAttribute("data-value", "swap");
+                buttonState();
+              });
+            });
+        })
+        .catch((error) => {
+          let msgboxbox = new MessageBox("#msgbox-area", {
+            closeTime: 10000,
+            hideCloseButton: false,
+          });
+
+          if (typeof error == "object") {
+            error = error.message;
+          }
+
+          msgboxbox.show(error, "ERROR", "CLOSE", () => {
+            mainButton.setAttribute("data-value", "swap");
+            buttonState();
+          });
+        });
+    } else {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "Please change your wallet network to " +
+          fromDropdown.children[0].textContent.replace(/^\s+|\s+$/g, "") +
+          " to swap.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("NETWORK_INCORRECT");
+          mainButton.setAttribute("data-value", "swap");
+          buttonState();
+        }
+      );
+      if (fromDropdown.getAttribute("chainId") != chainId) {
+        await changeNetwork(fromDropdown.getAttribute("chainId"));
+        await fetchAccountData();
+        if (chainId) {
+          WalletConnectedFromChain(chainId);
+        }
+      }
+      getAllTransactions();
+    }
+  }
+}
+
+async function approve(userAddress, amount_str) {
+  var tokenDecimals = await fromTokenContract.decimals();
+  var tokenSymbol = await fromTokenContract.symbol();
+
+  var tokenAmount = ethers.utils.parseUnits(amount_str, tokenDecimals);
+
+  allowance_amt = await fromTokenContract.allowance(
+    userAddress,
+    document
+      .getElementById("fromDropdown")
+      .getAttribute("bridgeContractAddress")
+  );
+
+  if (tokenAmount.gt(allowance_amt)) {
+    var tx0 = await fromTokenContract.approve(
+      document
+        .getElementById("fromDropdown")
+        .getAttribute("bridgeContractAddress"),
+      tokenAmount
+    );
+    await tx0.wait().then((response) => {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "Bridge swap of " +
+          fromDropdown.getAttribute("data-value") +
+          " " +
+          tokenSymbol +
+          " approved. Accept the swap transfer request to begin your swap.",
+        "SUCCESS",
+        "CLOSE",
+        () => {
+          console.log("A_SUCC");
+        }
+      );
+    });
+  }
+}
+
+async function collect(from, to, amount_str) {
+  var tokenDecimals = await fromTokenContract.decimals();
+  var tokenSymbol = await fromTokenContract.symbol();
+
+  var tokenAmount = ethers.utils.parseUnits(amount_str, tokenDecimals);
+
+  var tx = await fromBridgeContract.bridgeTokens(tokenAmount, from, to);
+  await tx.wait().then((response) => {
+    let msgboxbox = new MessageBox("#msgbox-area", {
+      closeTime: 10000,
+      hideCloseButton: false,
+    });
+    msgboxbox.show(
+      "Processing bridge swap. " +
+        amount_str +
+        " " +
+        tokenSymbol +
+        " being swapped.",
+      "SUCCESS",
+      "CLOSE",
+      () => {
+        console.log("C_SUCC");
+        getAllTransactions();
+      }
+    );
+  });
+}
+
+async function deliver(beneficiary, from, to, amount_str) {
+  var tokenDecimals = await fromTokenContract.decimals();
+  var tokenSymbol = await fromTokenContract.symbol();
+
+  var data = {
+    beneficiary: beneficiary,
+    from: from,
+    to: to,
+    amount: amount_str,
+    tokenDecimals: tokenDecimals,
+  };
+
+  $.ajax({
+    type: "POST",
+    url: release_tokens_url,
+    data: data,
+    mode: "same-origin",
+    headers: { "X-CSRFToken": $('input[name="csrfmiddlewaretoken"]')[0].value },
+    success: function (response) {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "Bridge swap complete. " +
+          BigNumber(document.getElementById("input").value)
+            .minus(fee)
+            .toString() +
+          " " +
+          tokenSymbol +
+          " delivered.",
+        "SUCCESS",
+        "CLOSE",
+        () => {
+          console.log("D_SUCC");
+          getAllTransactions();
+          amount = BigNumber(0);
+          document.getElementById("input").value = amount.toString();
+
+          mainButton.setAttribute("data-value", "swap");
+          buttonState();
+          calculateFeeAndMinimum();
+        }
+      );
+    },
+    error: function (response) {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show("ERROR: " + response, "ERROR", "CLOSE", () => {
+        console.log("D_ERROR");
+        getAllTransactions();
+        mainButton.setAttribute("data-value", "swap");
+        buttonState();
+      });
+    },
+  });
+  getAllTransactions();
+}
+
+async function getAllTransactions() {
+  document.getElementById("noBridgeHistory").style.display = "none";
+  document.getElementById("bridgeHistoryLoading").style.display = "block";
+
+  await fetchAccountData();
+
+  if (userAddress) {
+    var data = {
+      userAddress: userAddress,
+    };
+
+    $.ajax({
+      type: "POST",
+      url: get_transactions_url,
+      data: data,
+      mode: "same-origin",
+      headers: {
+        "X-CSRFToken": $('input[name="csrfmiddlewaretoken"]')[0].value,
+      },
+      success: async function (response) {
+        await createTransactionHistoryList(response["response"]);
+        return response["response"];
+      },
+      error: function (response) {
+        let msgboxbox = new MessageBox("#msgbox-area", {
+          closeTime: 10000,
+          hideCloseButton: false,
+        });
+        msgboxbox.show(
+          "ERROR: Failure to retrieve bridge swap history.",
+          "ERROR",
+          "CLOSE",
+          () => {
+            console.log(response);
+            document.getElementById("bridgeHistoryLoading").style.display =
+              "none";
+            document.getElementById("bridgeHistory").style.display = "none";
+            document.getElementById("noBridgeHistory").style.display = "block";
+          }
+        );
+
+        return [];
+      },
+    });
+  }
+}
+
+async function getFeePercentage() {
+  fromBridgeContract
+    .getFee()
+    .then((response) => {
+      fee_percentage = BigNumber(response.toString()).div(100);
+    })
+    .catch((error) => {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "ERROR: Failure to load bridge fee data.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("FEE_LOAD_ERROR");
+          mainButton.setAttribute("data-value", "swap");
+          buttonState();
+        }
+      );
+
+      fee_percentage = BigNumber(0);
+    });
+}
+
+async function getMinimumSwap() {
+  var tokenDecimals = await fromTokenContract.decimals();
+
+  fromBridgeContract
+    .getMinimumAmount()
+    .then((response) => {
+      minimum_swap = BigNumber(response.toString()).div(
+        BigNumber(10).pow(tokenDecimals)
+      );
+
+      // document.getElementById("minimum").innerHTML =
+      //   "Minimum amount: " +
+      //   minimum_swap.toString() +
+      //   " " +
+      //   fromDropdown.getAttribute("tokenSymbol");
+    })
+    .catch((error) => {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "ERROR: Failure to load bridge minimum swap data.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log(error,"MINIMUM_SWAP_LOAD_ERROR");
+          mainButton.setAttribute("data-value", "swap");
+          buttonState();
+        }
+      );
+
+      minimum_swap = BigNumber(0);
+    });
+}
+
+async function createTransactionHistoryList(data) {
+  if (data.length > 0) {
+    document.getElementById("bridgeHistoryTable").innerHTML = "";
+    for (let i = 0; i < data.length; i++) {
+      var date = new Date(0);
+
+      var from = data[i]["from"];
+      var to = data[i]["to"];
+
+      var from_network = "";
+      var to_network = "";
+
+      date.setUTCSeconds(data[i]["datetime"]);
+
+      var chainLogo = "";
+      var from_tokenSymbol = "";
+      var to_tokenSymbol = "";
+
+      for (
+        let i = 0;
+        i < document.getElementById("fromDropdownList").children.length;
+        i++
+      ) {
+        if (
+          document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("chainId") == parseInt(from)
+        ) {
+          chainLogo = document
+            .getElementById("fromDropdownList")
+            .children[i].children[0].getAttribute("src");
+          from_network = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("data-value");
+          from_tokenSymbol = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("tokenSymbol");
+          from_tokenDecimals = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("tokenDecimals");
+        }
+        if (
+          document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("chainId") == parseInt(to)
+        ) {
+          to_network = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("data-value");
+          to_tokenSymbol = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("tokenSymbol");
+          to_tokenDecimals = document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("tokenDecimals");
+        }
+      }
+
+      if (data[i]["transactionType"] == "release") {
+        var swapstatus = "complete";
+        var swapdetails = "delivered";
+        var swapdetails_network = to_network;
+        var swapdetails_tokenSymbol = to_tokenSymbol;
+        var token_amount = BigNumber(data[i]["amount"]).div(
+          BigNumber(10).pow(to_tokenDecimals).toString()
+        );
+      } else {
+        var swapstatus = "started";
+        var swapdetails = "collected";
+        var swapdetails_network = from_network;
+        var swapdetails_tokenSymbol = from_tokenSymbol;
+        var token_amount = BigNumber(data[i]["amount"]).div(
+          BigNumber(10).pow(from_tokenDecimals).toString()
+        );
+      }
+
+      var tr = document.getElementById("bridgeHistoryTable").insertRow(i);
+
+      tr.innerHTML =
+        `<td><img class="dropdown-item-image" src="` +
+        chainLogo +
+        `" /></td>
+            <td>` +
+        from_network +
+        ` to ` +
+        to_network +
+        ` swap ` +
+        swapstatus +
+        `</td>
+            <td class="text-muted">` +
+        swapdetails_network +
+        " " +
+        swapdetails_tokenSymbol +
+        " " +
+        swapdetails +
+        `</td>
+            <td class="text-muted">` +
+        date.toUTCString() +
+        `</td>
+            <td class="d-flex justify-content-end align-items-center">` +
+        token_amount.toString() +
+        " " +
+        swapdetails_tokenSymbol +
+        `</td>
+            `;
+    }
+
+    document.getElementById("bridgeHistory").style.display = "block";
+    document.getElementById("bridgeHistoryLoading").style.display = "none";
+    document.getElementById("noBridgeHistory").style.display = "none";
+  } else {
+    document.getElementById("bridgeHistory").style.display = "none";
+    document.getElementById("bridgeHistoryLoading").style.display = "none";
+    document.getElementById("noBridgeHistory").style.display = "block";
+  }
+}
+
+async function checkBalance(userAddress, amount_str) {
+  var tokenDecimals = await fromTokenContract.decimals();
+
+  var tokenAmount = ethers.utils.parseUnits(amount_str, tokenDecimals);
+
+  var tokenBalance = await fromTokenContract.balanceOf(userAddress);
+
+  if (tokenAmount.gt(tokenBalance)) {
+    mainButton.setAttribute("data-value", "insufficient");
+    buttonState();
+    return false;
+  } else {
+    mainButton.setAttribute("data-value", "swap");
+    buttonState();
+    return true;
+  }
+}
+
+async function setContracts() {
+  await fetchAccountData();
+
+  if (provider) {
+    var connectedChain = await web3.eth.getChainId();
+    if (from_chainID == connectedChain) {
+      fromTokenContract = new ethers.Contract(
+        document.getElementById("fromDropdown").getAttribute("tokenAddress"),
+        JSON.parse(
+          document.getElementById("fromDropdown").getAttribute("tokenAbi")
+        ),
+        provider.getSigner()
+      );
+
+      fromBridgeContract = new ethers.Contract(
+        document
+          .getElementById("fromDropdown")
+          .getAttribute("bridgeContractAddress"),
+        JSON.parse(
+          document
+            .getElementById("fromDropdown")
+            .getAttribute("bridgeContractAbi")
+        ),
+        provider.getSigner()
+      );
+    }
+  }
+}

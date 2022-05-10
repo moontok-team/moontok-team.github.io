@@ -1,0 +1,578 @@
+const fromDropdown = document.querySelector("#fromDropdown");
+const toDropdown = document.querySelector("#toDropdown");
+
+fromDropdown.onclick = function () {
+  // Open and closing the from dropdown list
+  if (document.getElementById("fromDropdownList").style.display == "none") {
+    refreshFromDropdownList();
+    document.getElementById("fromDropdownList").style.display = "flex";
+    document.querySelector("#fromDropdown svg").style.transform =
+      "rotate(180deg)";
+  } else if (
+    document.getElementById("fromDropdownList").style.display == "flex"
+  ) {
+    document.getElementById("fromDropdownList").style = "display: none;";
+    document.querySelector("#fromDropdown svg").style.transform =
+      "rotate(0deg)";
+  }
+};
+
+toDropdown.onclick = function () {
+  // Open and closing the to dropdown list
+  if (document.getElementById("toDropdownList").style.display == "none") {
+    refreshToDropdownList();
+    document.getElementById("toDropdownList").style.display = "flex";
+    document.querySelector("#toDropdown svg").style.transform =
+      "rotate(180deg)";
+  } else if (
+    document.getElementById("toDropdownList").style.display == "flex"
+  ) {
+    document.getElementById("toDropdownList").style = "display: none;";
+    document.querySelector("#toDropdown svg").style.transform = "rotate(0deg)";
+  }
+};
+
+window.addEventListener("click", async function (event) {
+  // When the user clicks anywhere outside of the modal (i.e modal background), close it
+  if (event.target === walletInfoModal) {
+    walletInfoModal.style.display = "none";
+  }
+  // When the user clicks anywhere outside of the modal (i.e modal background), close it
+  if (event.target === connectModal) {
+    connectModal.style.display = "none";
+    mainButton.setAttribute("data-value", "connect");
+    buttonState();
+  }
+
+  if (document.getElementById("fromDropdownList").style.display == "flex") {
+    if (event.target.getAttribute("class") === "dropdown-item") {
+      await fetchAccountData();
+      if (!provider) {
+        let msgboxbox = new MessageBox("#msgbox-area", {
+          closeTime: 10000,
+          hideCloseButton: false,
+        });
+        msgboxbox.show(
+          "ERROR: Browser is not web3 enabled. Reload or use a web3 capable browser to use the bridge.",
+          "ERROR",
+          "CLOSE",
+          () => {
+            console.log("NOT_WEB3_CAPABLE");
+            mainButton.setAttribute("data-value", "connect");
+            buttonState();
+          }
+        );
+
+        document.getElementById("fromDropdownList").style = "display: none;";
+        document.querySelector("#fromDropdown svg").style.transform =
+          "rotate(0deg)";
+        not_web3_capable_warned = true;
+        return;
+      }
+
+      fromDropdown.setAttribute(
+        "data-value",
+        event.target.getAttribute("data-value")
+      );
+      fromDropdown.setAttribute(
+        "chainId",
+        event.target.getAttribute("chainId")
+      );
+      fromDropdown.setAttribute(
+        "tokenexplorer",
+        event.target.getAttribute("tokenexplorer")
+      );
+      fromDropdown.setAttribute(
+        "tokenAddress",
+        event.target.getAttribute("tokenAddress")
+      );
+      fromDropdown.setAttribute(
+        "tokenAbi",
+        event.target.getAttribute("tokenAbi")
+      );
+      fromDropdown.setAttribute(
+        "bridgeContractAddress",
+        event.target.getAttribute("bridgeContractAddress")
+      );
+      fromDropdown.setAttribute(
+        "bridgeContractAbi",
+        event.target.getAttribute("bridgeContractAbi")
+      );
+      fromDropdown.setAttribute(
+        "tokenSymbol",
+        event.target.getAttribute("tokenSymbol")
+      );
+      fromDropdown.setAttribute(
+        "tokenDecimals",
+        event.target.getAttribute("tokenDecimals")
+      );
+
+      fromDropdown.children[0].innerHTML = event.target.innerHTML;
+      fromDropdown.children[0].children[0].setAttribute(
+        "src",
+        event.target.children[0].getAttribute("src")
+      );
+      document.getElementById("fromDropdownList").style = "display: none;";
+      document.querySelector("#fromDropdown svg").style.transform =
+        "rotate(0deg)";
+      from_chainID = event.target.getAttribute("chainId");
+
+      refreshFromDropdownList();
+      refreshToDropdownList();
+
+      await setContracts();
+
+      await getFeePercentage();
+      await getMinimumSwap();
+      calculateFeeAndMinimum();
+
+      if (fromDropdown.getAttribute("chainId") != chainId) {
+        await changeNetwork(fromDropdown.getAttribute("chainId"));
+        await fetchAccountData();
+        if (chainId) {
+          WalletConnectedFromChain(chainId);
+        }
+      }
+
+      getAllTransactions();
+    } else if (
+      event.target != fromDropdown &&
+      event.target.getAttribute("class") != "dropdown-item"
+    ) {
+      // CLose the dropdown if clicked outside of it
+      document.getElementById("fromDropdownList").style = "display: none;";
+      document.querySelector("#fromDropdown svg").style.transform =
+        "rotate(0deg)";
+    }
+  }
+
+  if (document.getElementById("toDropdownList").style.display == "flex") {
+    if (event.target.getAttribute("class") === "dropdown-item") {
+      toDropdown.setAttribute(
+        "data-value",
+        event.target.getAttribute("data-value")
+      );
+      toDropdown.setAttribute("chainId", event.target.getAttribute("chainId"));
+      toDropdown.setAttribute(
+        "tokenexplorer",
+        event.target.getAttribute("tokenexplorer")
+      );
+      toDropdown.setAttribute(
+        "tokenAddress",
+        event.target.getAttribute("tokenAddress")
+      );
+      toDropdown.setAttribute(
+        "tokenAbi",
+        event.target.getAttribute("tokenAbi")
+      );
+      toDropdown.setAttribute(
+        "bridgeContractAddress",
+        event.target.getAttribute("bridgeContractAddress")
+      );
+      toDropdown.setAttribute(
+        "bridgeContractAbi",
+        event.target.getAttribute("bridgeContractAbi")
+      );
+      toDropdown.setAttribute(
+        "tokenSymbol",
+        event.target.getAttribute("tokenSymbol")
+      );
+      toDropdown.setAttribute(
+        "tokenDecimals",
+        event.target.getAttribute("tokenDecimals")
+      );
+
+      toDropdown.children[0].innerHTML = event.target.innerHTML;
+      toDropdown.children[0].children[0].setAttribute(
+        "src",
+        event.target.children[0].getAttribute("src")
+      );
+      document.getElementById("toDropdownList").style = "display: none;";
+      document.querySelector("#toDropdown svg").style.transform =
+        "rotate(0deg)";
+
+      to_chainID = event.target.getAttribute("chainId");
+
+      refreshToDropdownList();
+    } else if (
+      event.target != toDropdown &&
+      event.target.getAttribute("class") != "dropdown-item"
+    ) {
+      // CLose the dropdown if clicked outside of it
+      document.getElementById("toDropdownList").style = "display: none;";
+      document.querySelector("#toDropdown svg").style.transform =
+        "rotate(0deg)";
+    }
+  }
+});
+
+function refreshFromDropdownList() {
+  for (
+    let i = 0;
+    i < document.getElementById("fromDropdownList").children.length;
+    i++
+  ) {
+    if (
+      document
+        .getElementById("fromDropdownList")
+        .children[i].getAttribute("chainId") ==
+      fromDropdown.getAttribute("chainId")
+    ) {
+      document.getElementById("fromDropdownList").children[i].style.display =
+        "none";
+    } else {
+      document.getElementById("fromDropdownList").children[i].style.display =
+        "flex";
+    }
+  }
+}
+
+function refreshToDropdownList() {
+  // First change the to Netowrk Option if its equal to the from Network before changing its options
+  if (
+    fromDropdown.getAttribute("chainId") == toDropdown.getAttribute("chainId")
+  ) {
+    for (
+      let i = 0;
+      i < document.getElementById("toDropdownList").children.length;
+      i++
+    ) {
+      if (
+        document
+          .getElementById("toDropdownList")
+          .children[i].getAttribute("chainId") !=
+        toDropdown.getAttribute("chainId")
+      ) {
+        toDropdown.setAttribute(
+          "data-value",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("data-value")
+        );
+        toDropdown.setAttribute(
+          "chainId",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("chainId")
+        );
+        toDropdown.setAttribute(
+          "tokenexplorer",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenexplorer")
+        );
+        toDropdown.setAttribute(
+          "tokenAddress",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenAddress")
+        );
+        toDropdown.setAttribute(
+          "tokenAbi",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenAbi")
+        );
+        toDropdown.setAttribute(
+          "bridgeContractAddress",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("bridgeContractAddress")
+        );
+        toDropdown.setAttribute(
+          "bridgeContractAbi",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("bridgeContractAbi")
+        );
+        toDropdown.setAttribute(
+          "tokenSymbol",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenSymbol")
+        );
+        toDropdown.setAttribute(
+          "tokenDecimals",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenDecimals")
+        );
+
+        toDropdown.children[0].innerHTML =
+          document.getElementById("toDropdownList").children[i].innerHTML;
+        toDropdown.children[0].children[0].setAttribute(
+          "src",
+          document
+            .getElementById("toDropdownList")
+            .children[i].children[0].getAttribute("src")
+        );
+        to_chainID = document
+          .getElementById("toDropdownList")
+          .children[i].getAttribute("chainId");
+
+        break;
+      }
+    }
+  }
+
+  for (
+    let i = 0;
+    i < document.getElementById("toDropdownList").children.length;
+    i++
+  ) {
+    if (
+      document
+        .getElementById("toDropdownList")
+        .children[i].getAttribute("chainId") ==
+        fromDropdown.getAttribute("chainId") ||
+      document
+        .getElementById("toDropdownList")
+        .children[i].getAttribute("chainId") ==
+        toDropdown.getAttribute("chainId")
+    ) {
+      document.getElementById("toDropdownList").children[i].style.display =
+        "none";
+    } else {
+      document.getElementById("toDropdownList").children[i].style.display =
+        "flex";
+    }
+  }
+}
+
+async function calculateFeeAndMinimum() {
+  if (document.getElementById("input").value == "") {
+    fee = BigNumber(0);
+  } else {
+    fee = BigNumber(
+      BigNumber(fee_percentage.toString())
+        .times(document.getElementById("input").value)
+        .toString()
+    );
+  }
+
+  // document.getElementById("fee").innerHTML =
+  //   "Fee: " + fee.toString() + " " + fromDropdown.getAttribute("tokenSymbol");
+
+  // document.getElementById("minimum").innerHTML =
+  //   "Minimum amount: " +
+  //   minimum_swap.toString() +
+  //   " " +
+  //   fromDropdown.getAttribute("tokenSymbol");
+
+//   if (
+//     BigNumber(document.getElementById("input").value).gte(
+//       minimum_swap.toString()
+//     )
+//   ) {
+//     document.getElementById("output").value = BigNumber(
+//       document.getElementById("input").value
+//     )
+//       .minus(fee)
+//       .toString();
+//   } else {
+//     document.getElementById("output").value = BigNumber(0).toString();
+//   }
+}
+
+async function WalletConnectedFromChain(chainId) {
+  for (
+    let i = 0;
+    i < document.getElementById("fromDropdownList").children.length;
+    i++
+  ) {
+    if (
+      document
+        .getElementById("fromDropdownList")
+        .children[i].getAttribute("chainId") == chainId
+    ) {
+      fromDropdown.setAttribute(
+        "data-value",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("data-value")
+      );
+      fromDropdown.setAttribute(
+        "chainId",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("chainId")
+      );
+      fromDropdown.setAttribute(
+        "tokenexplorer",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("tokenexplorer")
+      );
+      fromDropdown.setAttribute(
+        "tokenAddress",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("tokenAddress")
+      );
+      fromDropdown.setAttribute(
+        "tokenAbi",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("tokenAbi")
+      );
+      fromDropdown.setAttribute(
+        "bridgeContractAddress",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("bridgeContractAddress")
+      );
+      fromDropdown.setAttribute(
+        "bridgeContractAbi",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("bridgeContractAbi")
+      );
+      fromDropdown.setAttribute(
+        "tokenSymbol",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("tokenSymbol")
+      );
+      fromDropdown.setAttribute(
+        "tokenDecimals",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].getAttribute("tokenDecimals")
+      );
+
+      fromDropdown.children[0].innerHTML =
+        document.getElementById("fromDropdownList").children[i].innerHTML;
+      fromDropdown.children[0].children[0].setAttribute(
+        "src",
+        document
+          .getElementById("fromDropdownList")
+          .children[i].children[0].getAttribute("src")
+      );
+      document.getElementById("fromDropdownList").style = "display: none;";
+      document.querySelector("#fromDropdown svg").style.transform =
+        "rotate(0deg)";
+      from_chainID = document
+        .getElementById("fromDropdownList")
+        .children[i].getAttribute("chainId");
+    }
+  }
+
+  // If wallet isnt joining the bridge on a supported chain
+  // Prompt the wallet to switch network to the current fromNetwork in the dropdown
+  // To which they can change later
+
+  if (
+    fromDropdown.getAttribute("chainId") == toDropdown.getAttribute("chainId")
+  ) {
+    for (
+      let i = 0;
+      i < document.getElementById("toDropdownList").children.length;
+      i++
+    ) {
+      if (
+        document
+          .getElementById("toDropdownList")
+          .children[i].getAttribute("chainId") != chainId
+      ) {
+        toDropdown.setAttribute(
+          "data-value",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("data-value")
+        );
+        toDropdown.setAttribute(
+          "chainId",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("chainId")
+        );
+        toDropdown.setAttribute(
+          "tokenexplorer",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenexplorer")
+        );
+        toDropdown.setAttribute(
+          "tokenAddress",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenAddress")
+        );
+        toDropdown.setAttribute(
+          "tokenAbi",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenAbi")
+        );
+        toDropdown.setAttribute(
+          "bridgeContractAddress",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("bridgeContractAddress")
+        );
+        toDropdown.setAttribute(
+          "bridgeContractAbi",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("bridgeContractAbi")
+        );
+        toDropdown.setAttribute(
+          "tokenSymbol",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenSymbol")
+        );
+        toDropdown.setAttribute(
+          "tokenDecimals",
+          document
+            .getElementById("toDropdownList")
+            .children[i].getAttribute("tokenDecimals")
+        );
+
+        toDropdown.children[0].innerHTML =
+          document.getElementById("toDropdownList").children[i].innerHTML;
+        toDropdown.children[0].children[0].setAttribute(
+          "src",
+          document
+            .getElementById("toDropdownList")
+            .children[i].children[0].getAttribute("src")
+        );
+        document.getElementById("toDropdownList").style = "display: none;";
+        document.querySelector("#toDropdown svg").style.transform =
+          "rotate(0deg)";
+        to_chainID = document
+          .getElementById("toDropdownList")
+          .children[i].getAttribute("chainId");
+      }
+    }
+  }
+
+  refreshFromDropdownList();
+  refreshToDropdownList();
+}
+
+// Input checker
+document.getElementById("input").addEventListener("input", (event) => {
+  var valid_value_format = new RegExp(/^\d*\.?\d*$/);
+
+  // Remove leading zero
+  document.getElementById("input").value = document
+    .getElementById("input")
+    .value.replace(/^0+/, "");
+
+  // Remove non numeric values
+  if (valid_value_format.test(document.getElementById("input").value)) {
+    amount = BigNumber(document.getElementById("input").value); // If correct value entered update amount
+    if (document.getElementById("input").value != "") {
+      if (provider) {
+        checkBalance(userAddress, amount.toString());
+      }
+    }
+  } else {
+    document.getElementById("input").value = amount.toString(); // Else keep and display old amount/entered value
+  }
+
+  if (provider) {
+    calculateFeeAndMinimum();
+  }
+});

@@ -1,0 +1,587 @@
+const mainButton = document.querySelector("#MainButton");
+const connectWallet = document.querySelector("#connectWallet");
+const walletButton = document.querySelector("#walletAccount");
+const walletButtonIcon = document.querySelector("#walletAccountIcon");
+const connectModal = document.querySelector("#connectModal");
+const walletInfoModal = document.querySelector("#walletInfo");
+const closeConnectModal =
+  document.getElementsByClassName("connectModalClose")[0];
+const closeWalletInfoModal = document.getElementById("walletInfoClose");
+
+var provider;
+var user_data;
+var web3;
+var userAddress = null;
+
+var onboarding = false;
+var change_network_called = false;
+
+var from_chainID = fromDropdown.getAttribute("chainId");
+var to_chainID = toDropdown.getAttribute("chainId");
+var amount = BigNumber(0);
+var chainId;
+var fee_percentage = BigNumber(0);
+
+var fromTokenContract;
+var fromBridgeContract;
+
+var fee = BigNumber(0);
+var minimum_swap = BigNumber(0);
+
+const evmChains = window.evmChains;
+
+walletButtonIcon.onclick = function () {
+  walletInfoModal.style.display = "block";
+};
+
+document.getElementById("MainButton").onclick = buttonClickHandler;
+document.getElementById("connectWallet").onclick = connectWalletClickHandler;
+document.getElementById("connectMetamask").onclick = onConnectMetaMask;
+
+closeConnectModal.onclick = function () {
+  connectModal.style.display = "none";
+  // mainButton.setAttribute("data-value", "connect");
+  // buttonState();
+};
+
+closeWalletInfoModal.onclick = function () {
+  walletInfoModal.style.display = "none";
+};
+
+//Created check function to see if the site can make web3 rpc provider connections
+var not_web3_capable_warned = false;
+
+//Created check function to see if the MetaMask extension is installed
+const isMetaMaskInstalled = () => {
+  //Have to check the ethereum binding on the window object to see if it's installed
+  return Boolean(window.ethereum && window.ethereum.isMetaMask);
+};
+
+window.addEventListener("load", loadSequence);
+
+async function loadSequence() {
+  await fetchAccountData();
+  if (!provider) {
+    let msgboxbox = new MessageBox("#msgbox-area", {
+      closeTime: 10000,
+      hideCloseButton: false,
+    });
+    msgboxbox.show(
+      "ERROR: Browser is not web3 enabled. Reload or use a web3 capable browser to use the bridge.",
+      "ERROR",
+      "CLOSE",
+      () => {
+        console.log("NOT_WEB3_CAPABLE");
+        mainButton.setAttribute("data-value", "connect");
+        buttonState();
+      }
+    );
+
+    not_web3_capable_warned = true;
+
+    return;
+  }
+
+  await startApp();
+
+  if (chainId) {
+    WalletConnectedFromChain(chainId);
+  }
+  // If still the from network is not matching any of the supported dropdowns,
+  // Then change the wallet's network to the current selected from network
+  if (fromDropdown.getAttribute("chainId") != chainId) {
+    await changeNetwork(fromDropdown.getAttribute("chainId"));
+    await fetchAccountData();
+    if (chainId) {
+      WalletConnectedFromChain(chainId);
+    }
+  }
+
+  // Set contracts global variables to be used for all contract/token calls
+  // Wait for this as it is needed for any calls
+  await fetchAccountData();
+  await setContracts();
+
+  if (userAddress) {
+    connectModal.style.display = "none";
+    mainButton.setAttribute("data-value", "swap");
+    getAllTransactions();
+  }
+
+  buttonState();
+
+  await getFeePercentage();
+  await getMinimumSwap();
+  calculateFeeAndMinimum();
+}
+
+// Check when user leaves the page especially during metamask onboarding
+
+document.addEventListener("visibilitychange", async function () {
+  await fetchAccountData();
+  if (!provider) {
+    if (!not_web3_capable_warned) {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "ERROR: Browser is not web3 enabled. Reload or use a web3 capable browser to use the bridge.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("NOT_WEB3_CAPABLE");
+          mainButton.setAttribute("data-value", "connect");
+          buttonState();
+        }
+      );
+
+      not_web3_capable_warned = true;
+      return;
+    }
+
+    return;
+  }
+
+  // There was a change of tabs or window
+
+  // Check if there was already an existing user on the page and keep record of this
+  var existing_user = userAddress;
+
+  await fetchAccountData();
+
+  if (document.visibilityState == "visible" && !existing_user && onboarding) {
+    window.ethereum
+      .request({ method: "eth_requestAccounts" })
+      .then(() => {
+        fetchAccountData();
+        // If still no user and required onboarding, now ask the user to connect
+        if (!userAddress && onboarding) {
+          onConnectMetaMask();
+          if (userAddress) {
+            connectModal.style.display = "none";
+            mainButton.setAttribute("data-value", "swap");
+            buttonState();
+            getAllTransactions();
+            onboarding = false;
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.code === 4001) {
+          let msgboxbox = new MessageBox("#msgbox-area", {
+            closeTime: 10000,
+            hideCloseButton: false,
+          });
+          msgboxbox.show(
+            "ERROR: Cancelled wallet connection.",
+            "ERROR",
+            "CLOSE",
+            () => {
+              console.log("WALLET_CONNECTION_CANCELLED");
+              // User cancelled connectimg to bridge
+              connectModal.style.display = "none";
+              mainButton.setAttribute("data-value", "connect");
+              buttonState();
+            }
+          );
+        }
+      });
+  }
+});
+
+async function connectWalletClickHandler() {
+  if (connectWallet.getAttribute("data-value") === "connect") {
+    connectWallet.setAttribute("data-value", "connecting");
+    mainButton.innerHTML = "";
+    mainButton.setAttribute("class", "dot-carousel");
+    connectModal.style.display = "block";
+  } else if (!provider) {
+    await fetchAccountData();
+    if (!provider) {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "ERROR: Browser is not web3 enabled. Reload or use a web3 capable browser to use the bridge.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("NOT_WEB3_CAPABLE");
+          connectWallet.setAttribute("data-value", "connect");
+          connectWalletButtonState();
+        }
+      );
+      not_web3_capable_warned = true;
+      return;
+    }
+  } else if (connectWallet.getAttribute("data-value") === "connected") {
+    walletInfoModal.style.display = "block";
+  }
+}
+
+async function buttonClickHandler() {
+  if (!provider) {
+    await fetchAccountData();
+    if (!provider) {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 10000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "ERROR: Browser is not web3 enabled. Reload or use a web3 capable browser to use the bridge.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("NOT_WEB3_CAPABLE");
+          connectWallet.setAttribute("data-value", "connect");
+        }
+      );
+      not_web3_capable_warned = true;
+      return;
+    }
+  } else if (mainButton.getAttribute("data-value") == "swap") {
+    mainButton.setAttribute("data-value", "swapping");
+    buttonState();
+    if (
+      BigNumber(document.getElementById("input").value).gte(
+        minimum_swap.toString()
+      )
+    ) {
+      bridgeTokens();
+    } else {
+      let msgboxbox = new MessageBox("#msgbox-area", {
+        closeTime: 5000,
+        hideCloseButton: false,
+      });
+      msgboxbox.show(
+        "Your tokens to swap do not meet the minimum swap amount.",
+        "ERROR",
+        "CLOSE",
+        () => {
+          console.log("SWAP_LESS_THAN_MINIMUM");
+        }
+      );
+      mainButton.setAttribute("data-value", "swap");
+      buttonState();
+    }
+  }
+}
+
+async function connectWalletButtonState() {
+  var currentState = connectWallet.getAttribute("data-value");
+  if (currentState == "connect") {
+    connectModal.style.display = "none";
+    connectWallet.setAttribute("class", "wallet-connect-btn");
+    connectWallet.innerHTML = "Connect Wallet";
+  }
+  if (currentState == "connecting") {
+    connectWallet.innerHTML = "";
+    connectWallet.setAttribute("class", "wallet-connect-btn dot-carousel");
+    connectModal.style.display = "block";
+  }
+}
+async function buttonState() {
+  var currentState = mainButton.getAttribute("data-value");
+  if (currentState == "swapping") {
+    connectModal.style.display = "none";
+    mainButton.innerHTML = "";
+    mainButton.setAttribute("class", "dot-carousel");
+  }
+  if (currentState == "swap") {
+    connectModal.style.display = "none";
+    mainButton.setAttribute("class", "button connect-or-swap");
+    mainButton.innerHTML = "Bridge";
+  }
+  if (currentState == "insufficient") {
+    connectModal.style.display = "none";
+    mainButton.setAttribute("class", "button button-disabled connect-or-swap");
+    mainButton.innerHTML = "Insufficient Balance";
+    mainButton.style.disable = "disabled";
+  }
+}
+
+async function startApp() {
+  // provider = await window.detectEthereumProvider();
+  provider = await new ethers.providers.Web3Provider(window.ethereum);
+
+  if (provider) {
+    await fetchAccountData();
+
+    window.ethereum.removeListener("accountsChanged", () => {});
+    window.ethereum.removeListener("chainChanged", () => {});
+
+    await fetchAccountData();
+
+    // Subscribe to accounts change
+    window.ethereum.on("accountsChanged", async function (accounts) {
+      loadSequence();
+    });
+
+    // Subscribe to chain change
+    window.ethereum.on("chainChanged", async function (accounts) {
+      loadSequence();
+    });
+  }
+}
+
+async function onConnectMetaMask() {
+  // provider = await window.detectEthereumProvider();
+  provider = await new ethers.providers.Web3Provider(window.ethereum);
+
+  if (isMetaMaskInstalled()) {
+    fetchAccountData();
+    if (!userAddress) {
+      window.ethereum
+        .request({ method: "eth_requestAccounts" })
+        .then(() => {
+          // Successfully connected user
+
+          fetchAccountData();
+
+          connectModal.style.display = "none";
+          mainButton.setAttribute("data-value", "swap");
+          buttonState();
+        })
+        .catch((err) => {
+          if (err.code === 4001) {
+            let msgboxbox = new MessageBox("#msgbox-area", {
+              closeTime: 10000,
+              hideCloseButton: false,
+            });
+            msgboxbox.show(
+              "ERROR: Cancelled wallet connection.",
+              "ERROR",
+              "CLOSE",
+              () => {
+                console.log("WALLET_CONNECTION_CANCELLED");
+                mainButton.setAttribute("data-value", "swap");
+                buttonState();
+              }
+            );
+          }
+        });
+
+      await fetchAccountData();
+
+      if (chainId) {
+        WalletConnectedFromChain(chainId);
+      }
+
+      // If still the from network is not matching any of the supported dropdowns,
+      // Then change the wallet's network to the current selected from network
+      if (fromDropdown.getAttribute("chainId") != chainId) {
+        await changeNetwork(fromDropdown.getAttribute("chainId"));
+        await fetchAccountData();
+        if (chainId) {
+          WalletConnectedFromChain(chainId);
+        }
+      }
+
+      getAllTransactions();
+    }
+  } else {
+    console.log("METAMASK_NOT_DETECTED");
+    var Metamaskonboarding = new MetaMaskOnboarding();
+    await Metamaskonboarding.startOnboarding();
+    onboarding = true;
+
+    await fetchAccountData();
+
+    if (chainId) {
+      WalletConnectedFromChain(chainId);
+    }
+
+    // If still the from network is not matching any of the supported dropdowns,
+    // Then change the wallet's network to the current selected from network
+    if (fromDropdown.getAttribute("chainId") != chainId) {
+      await changeNetwork(fromDropdown.getAttribute("chainId"));
+      await fetchAccountData();
+      if (chainId) {
+        WalletConnectedFromChain(chainId);
+      }
+    }
+
+    getAllTransactions();
+  }
+}
+
+async function fetchAccountData() {
+  // Get a Web3 instance for the wallet
+
+  if (provider) {
+    web3 = new Web3(provider.provider);
+
+    // Get connected chain id from Ethereum node
+    chainId = await web3.eth.getChainId();
+
+    // Load chain information over an HTTP API
+    // const chainData = evmChains.getChain(chainId);
+
+    // Get list of accounts of the connected wallet
+    var accounts = await web3.eth.getAccounts();
+
+    if (accounts.length > 0) {
+      userAddress = accounts[0];
+    } else {
+      userAddress = null;
+    }
+
+    if (userAddress) {
+      document.getElementById("connectWallet").innerHTML =
+        userAddress.substring(0, 6) +
+        "..." +
+        userAddress.substring(userAddress.length - 4, userAddress.length - 1);
+      document.getElementById("walletAddy").innerHTML =
+        userAddress.substring(0, 14) +
+        "..." +
+        userAddress.substring(userAddress.length - 6, userAddress.length - 1);
+      document.getElementById("walletAccountIcon").style.display = "block";
+      document
+        .getElementById("connectWallet")
+        .setAttribute("data-value", "connected");
+
+      // Default to not showing the connected network logo if it is not a supported network
+      document.getElementById("connectedNetwork").style.display = "none";
+
+      // If wallet is connected to a supported network, then show its logo
+      for (
+        let i = 0;
+        i < document.getElementById("fromDropdownList").children.length;
+        i++
+      ) {
+        if (
+          chainId ==
+          document
+            .getElementById("fromDropdownList")
+            .children[i].getAttribute("chainId")
+        ) {
+          document
+            .getElementById("connectedNetwork")
+            .setAttribute(
+              "src",
+              document
+                .getElementById("fromDropdownList")
+                .children[i].children[0].getAttribute("src")
+            );
+          document.getElementById("connectedNetwork").style.display = "block";
+        }
+      }
+    } else {
+      userAddress = null;
+      document.getElementById("connectWallet").innerHTML = "Connect Wallet";
+      document.getElementById("walletAccountIcon").style.display = "none";
+      document.getElementById("connectedNetwork").style.display = "none";
+    }
+  } else {
+    if (window.ethereum) {
+      provider = await new ethers.providers.Web3Provider(window.ethereum);
+      if (provider) {
+        await fetchAccountData();
+      } else {
+        provider = null;
+        userAddress = null;
+      }
+    } else {
+      provider = null;
+      userAddress = null;
+    }
+  }
+}
+
+// Only used if connected
+async function changeNetwork(to_new_chainId) {
+  fetchAccountData();
+
+  if (userAddress && !change_network_called) {
+    change_network_called = true;
+    web3.currentProvider
+      .request({
+        method: "wallet_switchEthereumChain",
+        params: [
+          {
+            chainId: String(
+              ethers.utils.hexValue(ethers.BigNumber.from(to_new_chainId))
+            ),
+          },
+        ],
+      })
+      .then(function () {
+        connectModal.style.display = "none";
+        // window.location.reload();
+        fetchAccountData();
+      })
+      .catch(function (error) {
+        connectModal.style.display = "none";
+
+        if (error.code === 4902) {
+          web3.currentProvider
+            .request({
+              method: "wallet_addEthereumChain",
+              params: [networkChain[to_new_chainId]],
+            })
+            .then(function () {
+              connectModal.style.display = "none";
+              // window.location.reload();
+              fetchAccountData();
+            })
+            .catch(function (add_error) {
+              let msgboxbox = new MessageBox("#msgbox-area", {
+                closeTime: 12000,
+                hideCloseButton: false,
+              });
+              msgboxbox.show(
+                "We could not automatically add the network to that you wish to swap from. Manually add this network to your wallet.",
+                "ERROR",
+                "CLOSE",
+                () => {
+                  console.log("AUTOMATIC_NETWORK_ADD_FAIL", add_error);
+                }
+              );
+            });
+        } else if (error.code === 4001) {
+          let msgboxbox = new MessageBox("#msgbox-area", {
+            closeTime: 12000,
+            hideCloseButton: false,
+          });
+          msgboxbox.show(
+            "You rejected the request to have your network changed to swap from. Change to the selected network to use the bridge.",
+            "ERROR",
+            "CLOSE",
+            () => {
+              console.log("AUTOMATIC_NETWORK_CHANGE_DECLINED");
+            }
+          );
+        } else if (error.code === -32002) {
+          let msgboxbox = new MessageBox("#msgbox-area", {
+            closeTime: 12000,
+            hideCloseButton: false,
+          });
+          msgboxbox.show(
+            "Kindly approve the pending network change prompt on your wallet.",
+            "ERROR",
+            "CLOSE",
+            () => {
+              console.log("AUTOMATIC_NETWORK_CHANGE_PENDING");
+            }
+          );
+        } else {
+          let msgboxbox = new MessageBox("#msgbox-area", {
+            closeTime: 12000,
+            hideCloseButton: false,
+          });
+          msgboxbox.show(
+            "We could not automatically change network to that you wish to swap from. Manually change your wallet network.",
+            "ERROR",
+            "CLOSE",
+            () => {
+              console.log("AUTOMATIC_NETWORK_CHANGE_FAIL", error);
+            }
+          );
+        }
+      });
+
+    change_network_called = false;
+  }
+}
